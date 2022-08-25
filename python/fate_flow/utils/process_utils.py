@@ -13,9 +13,11 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
+import time
 import errno
 import os
 import subprocess
+from typing import Optional
 import psutil
 from fate_flow.utils.log_utils import schedule_logger
 from fate_flow.db.db_models import Task
@@ -206,18 +208,25 @@ def kill_task_executor_process(task: Task, only_child=False):
         raise e
 
 
-def kill_process(process: psutil.Process = None, pid: int = None, expected_cmdline: list = None):
-    process = process if process is not None else get_process_instance(pid)
+def graceful_kill_process(process: psutil.Process, timeout, expected_cmdline: list=None):
+    if check_process(pid=process.pid):
+        process.terminate()
+    time.sleep(timeout)
+    if check_process(pid=process.pid, expected_cmdline=expected_cmdline):
+        process.kill()
+
+
+def kill_process(process: Optional[psutil.Process] = None, pid: int = None, expected_cmdline: list = None):
+    if process is None:
+        process = get_process_instance(pid)
     if process is None:
         return
     for child in process.children(recursive=True):
         try:
-            if check_process(pid=child.pid):
-                child.kill()
+            graceful_kill_process(process=child, timeout=1)
         except Exception as e:
             stat_logger.warning(f"kill {child.pid} process failed", exc_info=True)
-    if check_process(pid=process.pid, expected_cmdline=expected_cmdline):
-        process.kill()
+    graceful_kill_process(process=process, timeout=1, expected_cmdline=expected_cmdline)
 
 
 def get_process_instance(pid: int):

@@ -17,6 +17,7 @@ import importlib
 import os
 import sys
 import traceback
+import signal
 
 from fate_arch import session, storage
 from fate_arch.common import EngineType, profile
@@ -144,6 +145,14 @@ class TaskExecutor(BaseTaskWorker):
                 session_options = {}
 
             sess = session.Session(session_id=args.session_id)
+
+            def handler(signum, frame):
+                LOGGER.info(f'Signal {signum} catched, raise Custom exception to stop executor')
+                class TaskExecutorPoison(Exception):
+                    ...
+                raise TaskExecutorPoison()
+            signal.signal(signal.SIGTERM, handler)
+
             sess.as_global()
             sess.init_computing(computing_session_id=args.session_id, options=session_options)
             component_parameters_on_party["job_parameters"] = job_parameters.to_dict()
